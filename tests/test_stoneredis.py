@@ -10,7 +10,7 @@ Tests for `stoneredis` module.
 
 import unittest
 
-from stoneredis import stoneredis
+from stoneredis import client
 
 
 class TestStoneredis(unittest.TestCase):
