@@ -128,12 +128,6 @@ class StoneRedis(redis.client.Redis):
         local total_size = redis_queue_len + table_len
         local from = 0
 
-        redis.call('PUBLISH', 'DEBUG', queue)
-        redis.call('PUBLISH', 'DEBUG', max_size)
-        redis.call('PUBLISH', 'DEBUG', table_len)
-        redis.call('PUBLISH', 'DEBUG', redis_queue_len)
-        redis.call('PUBLISH', 'DEBUG', total_size)
-
         if total_size >= max_size then
             -- Delete the same amount of data we are inserting. Even better, limit the queue to the specified size
             redis.call('PUBLISH', 'DEBUG', 'trim')
