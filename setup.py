@@ -22,7 +22,7 @@ test_requirements = [
 
 setup(
     name='stoneredis',
-    version='0.2.0',
+    version='0.2.1',
     description="Redis client based on redis-py client with some added features",
     long_description=readme + '\n\n' + history,
     author="Pedro Ten",
