@@ -2,14 +2,9 @@
 # encoding: utf-8
 """
 redis_utils.py
-
-Created on 2015-01-15.
-Copyright (c) 2015 StoneWorkSolutions. All rights reserved.
-
 """
 
 import time
-import uuid
 import redis
 import redis.sentinel
 from redis.exceptions import ConnectionError
@@ -38,6 +33,11 @@ class StoneRedis(redis.client.Redis):
         else:
             self.max_sleep = 30
 
+        if 'logger' in kwargs:
+            self.logger = kwargs.pop('logger')
+        else:
+            self.logger = None
+
         super(redis.client.Redis, self).__init__(*args, **kwargs)
 
     def ping(self):
@@ -57,13 +57,20 @@ class StoneRedis(redis.client.Redis):
             conn_retries = self.conn_retries
 
         count = 0
+        if self.logger:
+            self.logger.info('Connecting to Redis..')
         while count < conn_retries:
             super(redis.client.Redis, self).__init__(*self.args, **self.kwargs)
 
             if self.ping():
+                if self.logger:
+                    self.logger.info('Connected to Redis!')
                 return True
             else:
-                time.sleep(3 ** count)
+                sl = 3 ** count
+                if self.logger:
+                    self.logger.info('Connecting failed, retrying in {0} seconds'.format(sl))
+                time.sleep(sl)
                 count += 1
         raise ConnectionError
 
@@ -73,13 +80,19 @@ class StoneRedis(redis.client.Redis):
             conn_retries = self.conn_retries
 
         count = 0
+        if self.logger:
+            self.logger.info('Connecting to Redis..')
         while True:
             super(redis.client.Redis, self).__init__(*self.args, **self.kwargs)
 
             if self.ping():
+                if self.logger:
+                    self.logger.info('Connected to Redis!')
                 return True
             else:
                 sl = min(3 ** count, self.max_sleep)
+                if self.logger:
+                    self.logger.info('Connecting failed, retrying in {0} seconds'.format(sl))
                 time.sleep(sl)
                 count += 1
 
@@ -159,21 +172,3 @@ class StoneRedis(redis.client.Redis):
                 self.multi_rpush_limit_script([queue, limit], values)
         else:
             raise ValueError('Expected an iterable')
-
-    def uber_register(self, lua):
-        ''' This func is pretty awesome but looks like there is no need, will keep on investigating '''
-
-        func_name_randomized = str(uuid.uuid1())
-
-        def run_or_register(keys, values):
-            try:
-                print 'registered'
-                getattr(self, '__{0}'.format(func_name))(keys, values)
-            except AttributeError:
-                print 'NOT REGISTERED'
-                the_func = self.register_script(lua)
-                setattr(self, '__{0}'.format(func_name), the_func)
-                getattr(self, '__{0}'.format(func_name))(keys, values)
-
-        # setattr(self, func_name, run_or_register)
-        return run_or_register
