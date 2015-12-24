@@ -97,7 +97,9 @@ class StoneRedis(redis.client.Redis):
                 count += 1
 
     def multi_lpop(self, queue, number, transaction=False):
-        ''' Pops multiple elements from a queue in an atomic way :) should be on the specs! '''
+        ''' Pops multiple elements from a list
+            This operation will be atomic if transaction=True is passed
+        '''
         try:
             pipe = self.pipeline(transaction=transaction)
             pipe.multi()
@@ -110,10 +112,10 @@ class StoneRedis(redis.client.Redis):
             raise
 
     def multi_rpush(self, queue, values, bulk_size=0, transaction=False):
-        ''' Pushes multiple elements to a queue in an atomic way :) should be on the specs!
-            If bulk_size is set it will execute every each bulk_side inserted elements
-            The pipeline will be transactional if transaction is True '''
-
+        ''' Pushes multiple elements to a list
+            If bulk_size is set it will execute the pipeline every bulk_size elements
+            This operation will be atomic if transaction=True is passed
+        '''
         # Check that what we receive is iterable
         if hasattr(values, '__iter__'):
             pipe = self.pipeline(transaction=transaction)
@@ -128,10 +130,10 @@ class StoneRedis(redis.client.Redis):
             raise ValueError('Expected an iterable')
 
     def multi_rpush_limit(self, queue, values, limit):
-        ''' Pushes multiple elements to a queue in an atomic way until it reaches certain size :) should be on the specs!
+        ''' Pushes multiple elements to a list in an atomic way until it reaches certain size
             Once limit is reached, the function will lpop the oldest elements
-            If bulk_size is set it will execute every each bulk_side inserted elements
-            The pipeline will be transactional if transaction is True '''
+            This operation runs in LUA, so is always atomic
+        '''
 
         lua = '''
         local queue = KEYS[1]
@@ -160,13 +162,13 @@ class StoneRedis(redis.client.Redis):
 
         # Check that what we receive is iterable
         if hasattr(values, '__iter__'):
-            print 'Iterable, lets rock!'
             if len(values) > limit:
                 raise ValueError('The iterable size is bigger than the allowed limit ({1}): {0}'.format(len(values), limit))
             try:
                 self.multi_rpush_limit_script([queue, limit], values)
             except AttributeError:
-                print 'Script not registered... registering'
+                if self.logger:
+                    self.logger.info('Script not registered... registering')
                 # If the script is not registered, register it
                 self.multi_rpush_limit_script = self.register_script(lua)
                 self.multi_rpush_limit_script([queue, limit], values)
