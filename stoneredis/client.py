@@ -129,7 +129,7 @@ class StoneRedis(redis.client.Redis):
         else:
             raise ValueError('Expected an iterable')
 
-    def multi_rpush_limit(self, queue, values, limit):
+    def multi_rpush_limit(self, queue, values, limit=100000):
         ''' Pushes multiple elements to a list in an atomic way until it reaches certain size
             Once limit is reached, the function will lpop the oldest elements
             This operation runs in LUA, so is always atomic
