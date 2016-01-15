@@ -13,7 +13,8 @@ with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
 requirements = [
-    'redis'
+    'redis==2.10.3',
+    'python-redis-lock[django]==2.3.0',
 ]
 
 test_requirements = [

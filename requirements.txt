@@ -1,1 +1,2 @@
 redis==2.10.3
+python-redis-lock[django]==2.3.0
