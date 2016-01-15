@@ -101,7 +101,9 @@ class StoneRedis(redis.client.Redis):
                 count += 1
 
     def multi_lpop(self, queue, number, transaction=False):
-        ''' Pops multiple elements from a queue in an atomic way :) should be on the specs! '''
+        ''' Pops multiple elements from a list
+            This operation will be atomic if transaction=True is passed
+        '''
         try:
             pipe = self.pipeline(transaction=transaction)
             pipe.multi()
@@ -114,10 +116,10 @@ class StoneRedis(redis.client.Redis):
             raise
 
     def multi_rpush(self, queue, values, bulk_size=0, transaction=False):
-        ''' Pushes multiple elements to a queue in an atomic way :) should be on the specs!
-            If bulk_size is set it will execute every each bulk_side inserted elements
-            The pipeline will be transactional if transaction is True '''
-
+        ''' Pushes multiple elements to a list
+            If bulk_size is set it will execute the pipeline every bulk_size elements
+            This operation will be atomic if transaction=True is passed
+        '''
         # Check that what we receive is iterable
         if hasattr(values, '__iter__'):
             pipe = self.pipeline(transaction=transaction)
@@ -131,11 +133,11 @@ class StoneRedis(redis.client.Redis):
         else:
             raise ValueError('Expected an iterable')
 
-    def multi_rpush_limit(self, queue, values, limit):
-        ''' Pushes multiple elements to a queue in an atomic way until it reaches certain size :) should be on the specs!
+    def multi_rpush_limit(self, queue, values, limit=100000):
+        ''' Pushes multiple elements to a list in an atomic way until it reaches certain size
             Once limit is reached, the function will lpop the oldest elements
-            If bulk_size is set it will execute every each bulk_side inserted elements
-            The pipeline will be transactional if transaction is True '''
+            This operation runs in LUA, so is always atomic
+        '''
 
         lua = '''
         local queue = KEYS[1]
@@ -164,18 +166,56 @@ class StoneRedis(redis.client.Redis):
 
         # Check that what we receive is iterable
         if hasattr(values, '__iter__'):
-            print 'Iterable, lets rock!'
             if len(values) > limit:
                 raise ValueError('The iterable size is bigger than the allowed limit ({1}): {0}'.format(len(values), limit))
             try:
                 self.multi_rpush_limit_script([queue, limit], values)
             except AttributeError:
-                print 'Script not registered... registering'
+                if self.logger:
+                    self.logger.info('Script not registered... registering')
                 # If the script is not registered, register it
                 self.multi_rpush_limit_script = self.register_script(lua)
                 self.multi_rpush_limit_script([queue, limit], values)
         else:
             raise ValueError('Expected an iterable')
+
+    def rpush_limit(self, queue, value, limit=100000):
+        ''' Pushes an element to a list in an atomic way until it reaches certain size
+            Once limit is reached, the function will lpop the oldest elements
+            This operation runs in LUA, so is always atomic
+        '''
+
+        lua = '''
+        local queue = KEYS[1]
+        local max_size = tonumber(KEYS[2])
+        local table_len = 1
+        local redis_queue_len = tonumber(redis.call('LLEN', queue))
+        local total_size = redis_queue_len + table_len
+        local from = 0
+
+        if total_size >= max_size then
+            -- Delete the same amount of data we are inserting. Even better, limit the queue to the specified size
+            redis.call('PUBLISH', 'DEBUG', 'trim')
+            if redis_queue_len - max_size + table_len > 0 then
+                from = redis_queue_len - max_size + table_len
+            else
+                from = 0
+            end
+            redis.call('LTRIM', queue, from, redis_queue_len)
+        end
+        redis.call('RPUSH', queue, ARGV[1])
+        return 1
+
+        '''
+
+        try:
+            self.rpush_limit_script([queue, limit], [value])
+        except AttributeError:
+            if self.logger:
+                self.logger.info('Script not registered... registering')
+            # If the script is not registered, register it
+            self.rpush_limit_script = self.register_script(lua)
+            self.rpush_limit_script([queue, limit], [value])
 
     def get_lock(self, lockname, locktime=60):
         ''' Gets a lock or waits until it is able to get it '''

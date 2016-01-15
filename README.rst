@@ -21,7 +21,13 @@ Redis client based on redis-py client with some added features
 Features
 --------
 
-* TODO
+* Fully compatible with redis-py implementation
+* Added some convenient features:
++ Multi lpop: Pops multiple elements from a queue in an atomic way
++ Multi rpush: Pushes multiple elements to a list. If bulk_size is set it will execute the pipeline every bulk_size elements. This operation will be atomic if transaction=True is passed
++ Multi rpush limit: Pushes multiple elements to a list in an atomic way until it reaches certain size. Once limit is reached, the function will lpop the oldest elements. This operation runs in LUA, so is always atomic
+
+
 
 Credits
 ---------
