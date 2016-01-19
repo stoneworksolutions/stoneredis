@@ -217,13 +217,13 @@ class StoneRedis(redis.client.Redis):
             self.rpush_limit_script = self.register_script(lua)
             self.rpush_limit_script([queue, limit], [value])
 
-    def get_lock(self, lockname, locktime=60):
+    def get_lock(self, lockname, locktime=60, auto_renewal=False):
         ''' Gets a lock or waits until it is able to get it '''
         pid = os.getpid()
         caller = inspect.stack()[0][3]
         try:
             # rl = redlock.Redlock([{"host": settings.REDIS_SERVERS['std_redis']['host'], "port": settings.REDIS_SERVERS['std_redis']['port'], "db": settings.REDIS_SERVERS['std_redis']['db']}, ])
-            rl = redis_lock.Lock(self, lockname, expire=locktime)
+            rl = redis_lock.Lock(self, lockname, expire=locktime, auto_renewal=auto_renewal)
         except:
             if self.logger:
                 self.logger.error('Process {0} ({1}) could not get lock {2}. Going ahead without locking!!! {3}'.format(pid, caller, lockname, traceback.format_exc()))
@@ -237,13 +237,13 @@ class StoneRedis(redis.client.Redis):
         else:
             return rl
 
-    def wait_for_lock(self, lockname, locktime=60):
+    def wait_for_lock(self, lockname, locktime=60, auto_renewal=False):
         ''' Gets a lock or waits until it is able to get it '''
         pid = os.getpid()
         caller = inspect.stack()[0][3]
         try:
             # rl = redlock.Redlock([{"host": settings.REDIS_SERVERS['std_redis']['host'], "port": settings.REDIS_SERVERS['std_redis']['port'], "db": settings.REDIS_SERVERS['std_redis']['db']}, ])
-            rl = redis_lock.Lock(self, lockname, expire=locktime)
+            rl = redis_lock.Lock(self, lockname, expire=locktime, auto_renewal=auto_renewal)
         except AssertionError:
             if self.logger:
                 self.logger.error('Process {0} ({1}) could not get lock {2}. Going ahead without locking!!! {3}'.format(pid, caller, lockname, traceback.format_exc()))
