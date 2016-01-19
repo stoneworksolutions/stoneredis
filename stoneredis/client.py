@@ -228,6 +228,26 @@ class StoneRedis(redis.client.Redis):
             if self.logger:
                 self.logger.error('Process {0} ({1}) could not get lock {2}. Going ahead without locking!!! {3}'.format(pid, caller, lockname, traceback.format_exc()))
             return False
+        try:
+            lock = rl.acquire()
+        except RedisError:
+            return False
+        if not lock:
+            return False
+        else:
+            return rl
+
+    def wait_for_lock(self, lockname, locktime=60):
+        ''' Gets a lock or waits until it is able to get it '''
+        pid = os.getpid()
+        caller = inspect.stack()[0][3]
+        try:
+            # rl = redlock.Redlock([{"host": settings.REDIS_SERVERS['std_redis']['host'], "port": settings.REDIS_SERVERS['std_redis']['port'], "db": settings.REDIS_SERVERS['std_redis']['db']}, ])
+            rl = redis_lock.Lock(self, lockname, expire=locktime)
+        except AssertionError:
+            if self.logger:
+                self.logger.error('Process {0} ({1}) could not get lock {2}. Going ahead without locking!!! {3}'.format(pid, caller, lockname, traceback.format_exc()))
+            return False
         cont = 1
         t0 = time.time()
         lock = None
