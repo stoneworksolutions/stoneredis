@@ -218,7 +218,7 @@ class StoneRedis(redis.client.Redis):
             self.rpush_limit_script([queue, limit], [value])
 
     def get_lock(self, lockname, locktime=60, auto_renewal=False):
-        ''' Gets a lock or waits until it is able to get it '''
+        ''' Gets a lock and returns if it can be stablished. Returns false otherwise '''
         pid = os.getpid()
         caller = inspect.stack()[0][3]
         try:
