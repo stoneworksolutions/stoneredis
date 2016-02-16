@@ -71,18 +71,15 @@ class StoneRedis(redis.client.Redis):
                     self.logger.info('Connected to Redis!')
                 return True
             else:
-                sl = 3 ** count
+                sl = min(3 ** count, self.max_sleep)
                 if self.logger:
                     self.logger.info('Connecting failed, retrying in {0} seconds'.format(sl))
                 time.sleep(sl)
                 count += 1
         raise ConnectionError
 
-    def safe_reconnect(self, conn_retries=None):
+    def safe_reconnect(self):
         ''' Connects to Redis with a exponential waiting (3**n), wont return until successfully connected'''
-        if conn_retries is None:
-            conn_retries = self.conn_retries
-
         count = 0
         if self.logger:
             self.logger.info('Connecting to Redis..')
