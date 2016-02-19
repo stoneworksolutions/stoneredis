@@ -2,7 +2,7 @@
 Credits
 =======
 
-Development Lead
+Development Leadd
 ----------------
 
 * Pedro Ten <pedroten@gmail.com>
