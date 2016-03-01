@@ -260,7 +260,7 @@ class StoneRedis(redis.client.Redis):
             except RedisError:
                 pass
         if self.logger:
-            self.logger.info('Process {0} ({1}) got lock {2} for {3} seconds'.format(pid, caller, lockname, locktime))
+            self.logger.debug('Process {0} ({1}) got lock {2} for {3} seconds'.format(pid, caller, lockname, locktime))
         return rl
 
     def release_lock(self, lock, force=False):
@@ -274,4 +274,4 @@ class StoneRedis(redis.client.Redis):
         #   return False
         lock.release()
         if self.logger:
-            self.logger.info('Process {0} ({1}) released lock'.format(pid, caller))
+            self.logger.debug('Process {0} ({1}) released lock'.format(pid, caller))
