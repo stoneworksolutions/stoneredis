@@ -226,7 +226,7 @@ class StoneRedis(redis.client.Redis):
                 self.logger.error('Process {0} ({1}) could not get lock {2}. Going ahead without locking!!! {3}'.format(pid, caller, lockname, traceback.format_exc()))
             return False
         try:
-            lock = rl.acquire()
+            lock = rl.acquire(blocking=False)
         except RedisError:
             return False
         if not lock:
@@ -272,6 +272,7 @@ class StoneRedis(redis.client.Redis):
         # except:
         #   logger.error('Process {0} ({1}) could not release lock {2}'.format(pid, caller, lock.resource))
         #   return False
-        lock.release()
+        if lock and lock._held:
+            lock.release()
         if self.logger:
             self.logger.info('Process {0} ({1}) released lock'.format(pid, caller))
