@@ -2,6 +2,6 @@
 
 __author__ = 'Pedro Ten'
 __email__ = 'pedroten@gmail.com'
-__version__ = '0.5.1'
+__version__ = '0.5.2'
 
 from client import StoneRedis
