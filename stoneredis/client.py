@@ -20,6 +20,7 @@ class StoneRedis(redis.client.Redis):
         ''' Original method. Called through args kwargs to keep compatibility with future versions
         of redis-py. If we need to pass non exisiting arguments they would have to be treated here:
         self.myparam = kwargs.pop(myparam)
+        If new arguments are added to this class they must also be added and treated in StonePipeline class.
         '''
         # Save them with re connection purposes
         self.args = args
@@ -97,6 +98,11 @@ class StoneRedis(redis.client.Redis):
                 time.sleep(sl)
                 count += 1
 
+    def _multi_lpop_pipeline(self, pipe, queue, number):
+        ''' Pops multiple elements from a list in a given pipeline'''
+        pipe.lrange(queue, 0, number - 1)
+        pipe.ltrim(queue, number, -1)
+
     def multi_lpop(self, queue, number, transaction=False):
         ''' Pops multiple elements from a list
             This operation will be atomic if transaction=True is passed
@@ -104,13 +110,22 @@ class StoneRedis(redis.client.Redis):
         try:
             pipe = self.pipeline(transaction=transaction)
             pipe.multi()
-            pipe.lrange(queue, 0, number - 1)
-            pipe.ltrim(queue, number, -1)
+            self._multi_lpop_pipeline(pipe, queue, number)
             return pipe.execute()[0]
         except IndexError:
             return []
         except:
             raise
+
+    def _multi_rpush_pipeline(self, pipe, queue, values, bulk_size=0):
+        ''' Pushes multiple elements to a list in a given pipeline
+            If bulk_size is set it will execute the pipeline every bulk_size elements
+        '''
+        cont = 0
+        for value in values:
+            pipe.rpush(queue, value)
+            if bulk_size != 0 and cont % bulk_size == 0:
+                pipe.execute()
 
     def multi_rpush(self, queue, values, bulk_size=0, transaction=False):
         ''' Pushes multiple elements to a list
@@ -121,11 +136,7 @@ class StoneRedis(redis.client.Redis):
         if hasattr(values, '__iter__'):
             pipe = self.pipeline(transaction=transaction)
             pipe.multi()
-            cont = 0
-            for value in values:
-                pipe.rpush(queue, value)
-                if bulk_size != 0 and cont % bulk_size == 0:
-                    pipe.execute()
+            self._multi_rpush_pipeline(pipe, queue, values, bulk_size)
             pipe.execute()
         else:
             raise ValueError('Expected an iterable')
@@ -276,3 +287,56 @@ class StoneRedis(redis.client.Redis):
             lock.release()
         if self.logger:
             self.logger.debug('Process {0} ({1}) released lock'.format(pid, caller))
+
+    def pipeline(self, transaction=True, shard_hint=None):
+        ''' Return a pipeline that support StoneRedis custom methods '''
+        args_dict = {
+            "connection_pool": self.connection_pool,
+            "response_callbacks": self.response_callbacks,
+            "transaction": transaction,
+            "shard_hint": shard_hint,
+        }
+        args_dict.update(self.kwargs)
+
+        return StonePipeline(**args_dict)
+
+
+class StonePipeline(redis.client.BasePipeline, StoneRedis):
+    ''' Pipeline for the StoneRedis class.
+        If we need to pass non exisiting arguments they would have to be removed:
+        kwargs.pop(myparam)
+    '''
+
+    def __init__(self, *args, **kwargs):
+
+        self.kwargs = kwargs
+
+        # Remove conn_retries from kwargs because pipeline don't use reconnect function
+        if 'conn_retries' in kwargs:
+            kwargs.pop('conn_retries')
+
+        # Remove max_sleep from kwargs because pipeline don't use reconnect function
+        if 'max_sleep' in kwargs:
+            kwargs.pop('max_sleep')
+
+        if 'logger' in kwargs:
+            self.logger = kwargs.pop('logger')
+        else:
+            self.logger = None
+
+        super(StonePipeline, self).__init__(*args, **kwargs)
+
+    def multi_lpop(self, queue, number, transaction=False):
+        ''' Pops multiple elements from a list '''
+        try:
+            self._multi_lpop_pipeline(self, queue, number)
+        except:
+            raise
+
+    def multi_rpush(self, queue, values, bulk_size=0, transaction=False):
+        ''' Pushes multiple elements to a list '''
+        # Check that what we receive is iterable
+        if hasattr(values, '__iter__'):
+            self._multi_rpush_pipeline(self, queue, values, 0)
+        else:
+            raise ValueError('Expected an iterable')
