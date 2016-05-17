@@ -20,7 +20,7 @@ class StoneRedis(redis.client.Redis):
         ''' Original method. Called through args kwargs to keep compatibility with future versions
         of redis-py. If we need to pass non exisiting arguments they would have to be treated here:
         self.myparam = kwargs.pop(myparam)
-        If new arguments are added to this class they must also be added and treated in StonePipeline class.
+        If new arguments are added to this class they must also be added to pipeline method and be treated in StonePipeline class.
         '''
         # Save them with re connection purposes
         self.args = args
@@ -291,12 +291,12 @@ class StoneRedis(redis.client.Redis):
     def pipeline(self, transaction=True, shard_hint=None):
         ''' Return a pipeline that support StoneRedis custom methods '''
         args_dict = {
-            "connection_pool": self.connection_pool,
-            "response_callbacks": self.response_callbacks,
-            "transaction": transaction,
-            "shard_hint": shard_hint,
+            'connection_pool': self.connection_pool,
+            'response_callbacks': self.response_callbacks,
+            'transaction': transaction,
+            'shard_hint': shard_hint,
+            'logger': self.logger,
         }
-        args_dict.update(self.kwargs)
 
         return StonePipeline(**args_dict)
 
@@ -308,16 +308,6 @@ class StonePipeline(redis.client.BasePipeline, StoneRedis):
     '''
 
     def __init__(self, *args, **kwargs):
-
-        self.kwargs = kwargs
-
-        # Remove conn_retries from kwargs because pipeline don't use reconnect function
-        if 'conn_retries' in kwargs:
-            kwargs.pop('conn_retries')
-
-        # Remove max_sleep from kwargs because pipeline don't use reconnect function
-        if 'max_sleep' in kwargs:
-            kwargs.pop('max_sleep')
 
         if 'logger' in kwargs:
             self.logger = kwargs.pop('logger')
