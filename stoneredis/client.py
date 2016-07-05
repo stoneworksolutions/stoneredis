@@ -377,6 +377,7 @@ class StoneSentinel(redis.sentinel.Sentinel):
     '''
     def master_for(self, service_name, redis_class=StoneRedis, connection_pool_class=redis.sentinel.SentinelConnectionPool, **kwargs):
         if redis_class is StoneRedis:
+            print 'Es StoneRedis'
             stoneredis_kwargs = {}
 
             # conn_retries is the number of times that reconnect will try to connect
@@ -394,6 +395,7 @@ class StoneSentinel(redis.sentinel.Sentinel):
 
         if redis_class is StoneRedis:
             for k, v in stoneredis_kwargs.iteritems():
-                redis_class_instance[k] = v
+                redis_class_instance.__setattr__(k, v)
+                redis_class_instance.__setitem__(k, v)
 
         return redis_class_instance
