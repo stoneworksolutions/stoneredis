@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # encoding: utf-8
-
+"""
+redis_utils.py
+"""
 
 import inspect
 import os
@@ -9,7 +11,7 @@ import redis.sentinel
 import redis_lock
 import time
 import traceback
-from redis.exceptions import ConnectionError, RedisError, TimeoutError
+from redis.exceptions import ConnectionError, RedisError
 
 
 class StoneRedis(redis.client.Redis):
@@ -19,22 +21,27 @@ class StoneRedis(redis.client.Redis):
         of redis-py. If we need to pass non exisiting arguments they would have to be treated here:
         self.myparam = kwargs.pop(myparam)
         If new arguments are added to this class they must also be added to pipeline method and be treated in StonePipeline class.
-        It will also be necessary to add to StoneSentinel class.
         '''
         # Save them with re connection purposes
         self.args = args
         self.kwargs = kwargs
 
         # conn_retries is the number of times that reconnect will try to connect
-        self.conn_retries = kwargs.pop('conn_retries', 1)
-
-        # conn_retries is the number of times that any command will try to execute
-        self.retries = kwargs.pop('retries', 3)
+        if 'conn_retries' in kwargs:
+            self.conn_retries = kwargs.pop('conn_retries')
+        else:
+            self.conn_retries = 1
 
         # max_sleep is the amount of time between reconnection attmpts by safe_reconnect
-        self.max_sleep = kwargs.pop('max_sleep', 30)
+        if 'max_sleep' in kwargs:
+            self.max_sleep = kwargs.pop('max_sleep')
+        else:
+            self.max_sleep = 30
 
-        self.logger = kwargs.pop('logger', None)
+        if 'logger' in kwargs:
+            self.logger = kwargs.pop('logger')
+        else:
+            self.logger = None
 
         super(redis.client.Redis, self).__init__(*args, **kwargs)
 
@@ -96,7 +103,7 @@ class StoneRedis(redis.client.Redis):
         pipe.lrange(queue, 0, number - 1)
         pipe.ltrim(queue, number, -1)
 
-    def multi_lpop(self, queue, number, transaction=True):
+    def multi_lpop(self, queue, number, transaction=False):
         ''' Pops multiple elements from a list
             This operation will be atomic if transaction=True is passed
         '''
@@ -120,7 +127,7 @@ class StoneRedis(redis.client.Redis):
             if bulk_size != 0 and cont % bulk_size == 0:
                 pipe.execute()
 
-    def multi_rpush(self, queue, values, bulk_size=0, transaction=True):
+    def multi_rpush(self, queue, values, bulk_size=0, transaction=False):
         ''' Pushes multiple elements to a list
             If bulk_size is set it will execute the pipeline every bulk_size elements
             This operation will be atomic if transaction=True is passed
@@ -289,45 +296,23 @@ class StoneRedis(redis.client.Redis):
             'transaction': transaction,
             'shard_hint': shard_hint,
             'logger': self.logger,
-            'retries': self.retries,
-            'max_sleep': self.max_sleep,
         }
 
         return StonePipeline(**args_dict)
 
-    def execute_command(self, *args, **options):
-        ''' Wrapper of Redis.execute_command to warrants n retries of the call on failure '''
-        try:
-            return super(redis.client.Redis, self).execute_command(*args, **options)
-        except (ConnectionError, TimeoutError):
-            count = 0
-            while count < self.retries:
-                try:
-                    return super(redis.client.Redis, self).execute_command(*args, **options)
-                except (ConnectionError, TimeoutError):
-                    sl = min(3 ** count, self.max_sleep)
-                    if self.logger:
-                        self.logger.info('Connecting failed, retrying in {0} seconds'.format(sl))
-                    time.sleep(sl)
-                    count += 1
-            raise
 
-
-class StonePipeline(redis.client.Pipeline, StoneRedis):
+class StonePipeline(redis.client.BasePipeline, StoneRedis):
     ''' Pipeline for the StoneRedis class.
         If we need to pass non exisiting arguments they would have to be removed:
         kwargs.pop(myparam)
     '''
 
     def __init__(self, *args, **kwargs):
-        # conn_retries is the number of times that reconnect will try to connect
-        self.logger = kwargs.pop('logger', None)
 
-        # conn_retries is the number of times that any command will try to execute
-        self.retries = kwargs.pop('retries', 3)
-
-        # max_sleep is the amount of time between reconnection attmpts by safe_reconnect
-        self.max_sleep = kwargs.pop('max_sleep', 30)
+        if 'logger' in kwargs:
+            self.logger = kwargs.pop('logger')
+        else:
+            self.logger = None
 
         super(StonePipeline, self).__init__(*args, **kwargs)
 
@@ -339,62 +324,9 @@ class StonePipeline(redis.client.Pipeline, StoneRedis):
             raise
 
     def multi_rpush(self, queue, values, bulk_size=0, transaction=False):
-        # TODO: Separar transaccional de no-transaccional
         ''' Pushes multiple elements to a list '''
         # Check that what we receive is iterable
         if hasattr(values, '__iter__'):
             self._multi_rpush_pipeline(self, queue, values, 0)
         else:
             raise ValueError('Expected an iterable')
-
-    def execute(self, raise_on_error=True):
-        ''' Wrapper of Pipeline.execute to warrants n retries of the call on failure '''
-        stack = self.command_stack
-        try:
-            return super(StonePipeline, self).execute(raise_on_error)
-        except (ConnectionError, TimeoutError):
-            # Transactional will retry the call on failure
-            if self.transaction:
-                count = 0
-                while count < self.retries:
-                    try:
-                        self.command_stack = stack
-                        return super(StonePipeline, self).execute(raise_on_error)
-                    except (ConnectionError, TimeoutError):
-                        sl = min(3 ** count, self.max_sleep)
-                        if self.logger:
-                            self.logger.info('Connecting failed, retrying in {0} seconds'.format(sl))
-                        time.sleep(sl)
-                        count += 1
-            # Non transactional case has same behaviour.
-            else:
-                raise  # It's not necessary but this is more specific.
-            raise
-
-
-class StoneSentinel(redis.sentinel.Sentinel):
-    ''' Wrapper of original method to allow a good instantiation of StoneRedis class.
-    '''
-    def master_for(self, service_name, redis_class=StoneRedis, connection_pool_class=redis.sentinel.SentinelConnectionPool, **kwargs):
-        if redis_class is StoneRedis:
-            stoneredis_kwargs = {}
-
-            # conn_retries is the number of times that reconnect will try to connect
-            stoneredis_kwargs['conn_retries'] = kwargs.pop('conn_retries', 1)
-
-            # conn_retries is the number of times that any command will try to execute
-            stoneredis_kwargs['retries'] = kwargs.pop('retries', 3)
-
-            # max_sleep is the amount of time between reconnection attmpts by safe_reconnect
-            stoneredis_kwargs['max_sleep'] = kwargs.pop('max_sleep', 30)
-
-            stoneredis_kwargs['logger'] = kwargs.pop('logger', None)
-
-        redis_class_instance = super(StoneSentinel, self).master_for(service_name, redis_class=redis_class, connection_pool_class=connection_pool_class, **kwargs)
-
-        if redis_class is StoneRedis:
-            for k, v in stoneredis_kwargs.iteritems():
-                redis_class_instance.__setattr__(k, v)
-                redis_class_instance.__setitem__(k, v)
-
-        return redis_class_instance
