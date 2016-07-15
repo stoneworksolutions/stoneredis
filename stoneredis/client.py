@@ -295,6 +295,33 @@ class StoneRedis(redis.client.Redis):
 
         return StonePipeline(**args_dict)
 
+    def setx(self, key, value):
+        ''' Sets an value in oly if his key exists
+            This operation runs in LUA, so is always atomic
+        '''
+
+        lua = '''
+        local key = ARGV[1]
+        local value = ARGV[2]
+
+        if redis.call('EXISTS', key) > 0 then
+            redis.call('SET', key, value)
+            return 1
+        end
+
+        return 0
+
+        '''
+
+        try:
+            return bool(self.setx_script(['key', 'value'], [key, value]))
+        except AttributeError:
+            if self.logger:
+                self.logger.info('Script not registered... registering')
+            # If the script is not registered, register it
+            self.setx_script = self.register_script(lua)
+            return bool(self.setx_script(['key', 'value'], [key, value]))
+
     def execute_command(self, *args, **options):
         ''' Wrapper of Redis.execute_command to warrants n retries of the call on failure '''
         try:
