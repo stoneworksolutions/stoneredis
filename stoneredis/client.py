@@ -350,6 +350,43 @@ class StoneRedis(redis.client.Redis):
             self.hsetx_script = self.register_script(lua)
             return bool(self.hsetx_script(['key', 'field', 'value'], [key, field, value]))
 
+    def hmsetx(self, key, dictionary):
+        ''' Sets a dictionary in only if his key exists
+            This operation runs in LUA, so is always atomic
+        '''
+
+        lua = '''
+        local key = ARGV[1]
+
+        if redis.call('EXISTS', key) > 0 then
+            redis.call('HMSET', unpack(ARGV))
+            return 1
+        end
+
+        return 0
+
+        '''
+
+        # Set up args to lua
+        arg_no = 0
+        keys = ['key']
+        values = [key]
+        for field, value in dictionary.iteritems():
+            keys.append('field{0}'.format(arg_no))
+            values.append(field)
+            keys.append('value{0}'.format(arg_no))
+            values.append(value)
+            arg_no += 1
+
+        try:
+            return bool(self.hmsetx_script(keys, values))
+        except AttributeError:
+            if self.logger:
+                self.logger.info('Script not registered... registering')
+            # If the script is not registered, register it
+            self.hmsetx_script = self.register_script(lua)
+            return bool(self.hmsetx_script(keys, values))
+
     def execute_command(self, *args, **options):
         ''' Wrapper of Redis.execute_command to warrants n retries of the call on failure '''
         try:
